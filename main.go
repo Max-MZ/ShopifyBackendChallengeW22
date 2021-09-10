@@ -32,11 +32,42 @@ type UploadZip struct {
 	Author   string `json:"author"`
 }
 
+type DeletePictures struct {
+	Filenames []string `json:"filenames"`
+	Author    string   `json:"author"`
+}
+
 var accesskey string      // access key
 var secretkey string      // secret key
 var awsRegion string      // region
 var bucket string         // bucketname
 var sess *session.Session // session created for s3 connection
+var svc *s3.S3            // service client
+
+func deletion(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Methods", "DELETE")
+
+	decoder := json.NewDecoder(r.Body) // read body of request
+	var toDelete DeletePictures
+
+	err := decoder.Decode(&toDelete)
+	if err != nil {
+		log.Printf("Unable to decode")
+	}
+
+	for _, filename := range toDelete.Filenames {
+		headObj := s3.HeadObjectInput{
+			Bucket: aws.String(bucket),
+			Key:    aws.String(filename),
+		}
+		metadata := HeadObject(&headObj)
+
+	}
+}
 
 func bulkUpload(w http.ResponseWriter, r *http.Request) { // upload a zip containing files
 
@@ -171,6 +202,7 @@ func main() {
 
 	router.HandleFunc("/api/upload", uploadPicture).Methods("POST")
 	router.HandleFunc("/api/zipupload", bulkUpload).Methods("POST")
+	router.HandleFunc("/api/delete", deletion).Methods("DELETE")
 
 	accesskey = os.Getenv("AWS_ACCESS_KEY")
 	secretkey = os.Getenv("AWS_SECRET_ACCESS_KEY")
@@ -190,7 +222,7 @@ func main() {
 		panic(err)
 	}
 
-	svc := s3.New(sess)
+	svc = s3.New(sess)
 
 	result, err := svc.ListBuckets(nil)
 	if err != nil {
