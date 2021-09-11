@@ -13,6 +13,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -44,6 +45,31 @@ var bucket string         // bucketname
 var sess *session.Session // session created for s3 connection
 var svc *s3.S3            // service client
 
+func checkExisting(filename string) bool {
+	//check if file exists
+	headObj := s3.HeadObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(filename),
+	}
+
+	_, err := svc.HeadObject(&headObj)
+
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			switch aerr.Code() {
+			case "NotFound":
+				return false
+			default:
+				return false
+			}
+		}
+		return false
+	}
+
+	// return true if metadata is successfully retrieved
+	return true
+}
+
 func deletion(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -64,7 +90,33 @@ func deletion(w http.ResponseWriter, r *http.Request) {
 			Bucket: aws.String(bucket),
 			Key:    aws.String(filename),
 		}
-		metadata := HeadObject(&headObj)
+
+		metadata, err := svc.HeadObject(&headObj)
+
+		if err != nil {
+			log.Printf("Problem with file, probably doesn't exist")
+			continue
+
+		}
+		// log.Printf(*metadata.Metadata["author"])
+		if *metadata.Metadata["Author"] != toDelete.Author {
+			log.Printf("Not correct! ")
+			w.Write([]byte("Not the author!\n"))
+			continue
+		} else {
+			_, err = svc.DeleteObject(&s3.DeleteObjectInput{Bucket: aws.String(bucket), Key: aws.String(filename)})
+			if err != nil {
+				log.Printf("Unable to delete object %q from bucket %q, %v", filename, bucket, err)
+				continue
+			}
+
+			err = svc.WaitUntilObjectNotExists(&s3.HeadObjectInput{
+				Bucket: aws.String(bucket),
+				Key:    aws.String(filename),
+			})
+
+			fmt.Printf("Deleted %q\n", filename)
+		}
 
 	}
 }
@@ -100,7 +152,6 @@ func bulkUpload(w http.ResponseWriter, r *http.Request) { // upload a zip contai
 
 	// unzip and iterate through
 	for _, f := range archive.File {
-		// filePath := filepath.Join(dst, f.Name)
 		log.Printf("unzipping file " + f.Name)
 
 		fileType := filepath.Ext(f.Name)
@@ -169,6 +220,9 @@ func uploadPicture(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
 		log.Printf("Unable to open file %q", err)
+		w.Write([]byte("Cannot open file!\n"))
+		file.Close()
+		return
 	}
 
 	defer file.Close()
@@ -177,7 +231,7 @@ func uploadPicture(w http.ResponseWriter, r *http.Request) {
 
 	meta["author"] = aws.String(uploaded.Author)
 
-	fin, err := uploader.Upload(&s3manager.UploadInput{
+	_, err = uploader.Upload(&s3manager.UploadInput{
 		Bucket:   aws.String(bucket),
 		ACL:      aws.String("public-read"),
 		Key:      aws.String(uploaded.Filename + "." + uploaded.Filetype), // picture is prefixed by author name
@@ -185,10 +239,34 @@ func uploadPicture(w http.ResponseWriter, r *http.Request) {
 		Metadata: meta,
 	})
 
-	log.Printf(fin.UploadID)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	w.Write([]byte("Picture successfully uploaded!\n"))
 
+}
+
+func initSession() {
+
+	accesskey = os.Getenv("AWS_ACCESS_KEY")
+	secretkey = os.Getenv("AWS_SECRET_ACCESS_KEY")
+	awsRegion = os.Getenv("AWS_REGION")
+	bucket = os.Getenv("BUCKET")
+
+	fmt.Printf(awsRegion + "\n")
+
+	sess, _ = session.NewSession(
+		&aws.Config{
+			Region: aws.String(awsRegion),
+			Credentials: credentials.NewStaticCredentials(
+				accesskey,
+				secretkey,
+				"", // a token will be created when the session it's used.
+			),
+		})
+
+	svc = s3.New(sess)
 }
 
 func main() {
@@ -198,31 +276,33 @@ func main() {
 		log.Fatal("Error loading .env file")
 	}
 
+	initSession()
+
 	router := mux.NewRouter()
 
 	router.HandleFunc("/api/upload", uploadPicture).Methods("POST")
 	router.HandleFunc("/api/zipupload", bulkUpload).Methods("POST")
 	router.HandleFunc("/api/delete", deletion).Methods("DELETE")
 
-	accesskey = os.Getenv("AWS_ACCESS_KEY")
-	secretkey = os.Getenv("AWS_SECRET_ACCESS_KEY")
-	awsRegion = os.Getenv("AWS_REGION")
-	bucket = os.Getenv("BUCKET")
+	// accesskey = os.Getenv("AWS_ACCESS_KEY")
+	// secretkey = os.Getenv("AWS_SECRET_ACCESS_KEY")
+	// awsRegion = os.Getenv("AWS_REGION")
+	// bucket = os.Getenv("BUCKET")
 
-	sess, err = session.NewSession(
-		&aws.Config{
-			Region: aws.String(awsRegion),
-			Credentials: credentials.NewStaticCredentials(
-				accesskey,
-				secretkey,
-				"", // a token will be created when the session it's used.
-			),
-		})
-	if err != nil {
-		panic(err)
-	}
+	// sess, err = session.NewSession(
+	// 	&aws.Config{
+	// 		Region: aws.String(awsRegion),
+	// 		Credentials: credentials.NewStaticCredentials(
+	// 			accesskey,
+	// 			secretkey,
+	// 			"", // a token will be created when the session it's used.
+	// 		),
+	// 	})
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	svc = s3.New(sess)
+	// svc = s3.New(sess)
 
 	result, err := svc.ListBuckets(nil)
 	if err != nil {
