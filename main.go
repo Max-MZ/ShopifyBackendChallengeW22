@@ -58,7 +58,7 @@ func checkAuthor(filename string, requester string) bool {
 
 }
 
-//check if file exists
+// check if file exists
 func checkExisting(filename string) bool {
 
 	headObj := s3.HeadObjectInput{
@@ -85,6 +85,7 @@ func checkExisting(filename string) bool {
 	return true
 }
 
+// deletion of files
 func deletion(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -102,19 +103,6 @@ func deletion(w http.ResponseWriter, r *http.Request) {
 
 	// iterate through array of names to delete
 	for _, filename := range toDelete.Filenames {
-		// headObj := s3.HeadObjectInput{
-		// 	Bucket: aws.String(bucket),
-		// 	Key:    aws.String(filename),
-		// }
-
-		// metadata, err := svc.HeadObject(&headObj)
-
-		// if err != nil {
-		// 	log.Printf("Problem with file, probably doesn't exist")
-		// 	continue
-
-		// }
-		// // log.Printf(*metadata.Metadata["author"])
 
 		// if the file doesn't exist, skip
 		if !checkExisting(filename) {
@@ -144,6 +132,8 @@ func deletion(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handles upload of zips
+// iterates through files and uploads
 func bulkUpload(w http.ResponseWriter, r *http.Request) { // upload a zip containing files
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -192,6 +182,14 @@ func bulkUpload(w http.ResponseWriter, r *http.Request) { // upload a zip contai
 			return
 		}
 
+		// can't overwrite others' stuff
+		if checkExisting(f.Name) {
+			if !checkAuthor(f.Name, uploaded.Author) {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+		}
+
 		file, err := os.Open(f.Name)
 
 		if err != nil {
@@ -219,6 +217,7 @@ func bulkUpload(w http.ResponseWriter, r *http.Request) { // upload a zip contai
 
 }
 
+// simple upload of new file
 func uploadPicture(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -233,10 +232,22 @@ func uploadPicture(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Printf("Unable to decode")
+		w.WriteHeader(http.StatusNotAcceptable)
+		return
 	}
 
-	if checkExisting(uploaded.Filename + "." + uploaded.Filetype) {
+	// bad file type
+	if uploaded.Filetype != ".jpg" && uploaded.Filetype != ".jpeg" && uploaded.Filetype != ".png" {
+		w.WriteHeader(http.StatusNotAcceptable)
+		return
+	}
 
+	// can't overwrite others' stuff
+	if checkExisting(uploaded.Filename + "." + uploaded.Filetype) {
+		if !checkAuthor(uploaded.Filename+"."+uploaded.Filetype, uploaded.Author) {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
 	}
 	uploader := s3manager.NewUploader(sess)
 
@@ -254,6 +265,7 @@ func uploadPicture(w http.ResponseWriter, r *http.Request) {
 
 	defer file.Close()
 
+	// set metadata
 	meta := make(map[string]*string)
 
 	meta["author"] = aws.String(uploaded.Author)
@@ -274,6 +286,9 @@ func uploadPicture(w http.ResponseWriter, r *http.Request) {
 
 }
 
+// handle initialization of .env vars
+// create s3 session
+// useful for testing too!
 func initSession() {
 
 	accesskey = os.Getenv("AWS_ACCESS_KEY")
