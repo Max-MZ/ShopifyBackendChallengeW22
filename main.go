@@ -237,7 +237,7 @@ func uploadPicture(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// bad file type
-	if uploaded.Filetype != ".jpg" && uploaded.Filetype != ".jpeg" && uploaded.Filetype != ".png" {
+	if uploaded.Filetype != "jpg" && uploaded.Filetype != "jpeg" && uploaded.Filetype != "png" {
 		w.WriteHeader(http.StatusNotAcceptable)
 		return
 	}
@@ -286,6 +286,41 @@ func uploadPicture(w http.ResponseWriter, r *http.Request) {
 
 }
 
+// return files created by a user
+func searchByAuthor(w http.ResponseWriter, r *http.Request) { // upload a zip containing files
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Methods", "GET")
+
+	// fetch author name
+	params := mux.Vars(r)
+	user := params["author"]
+
+	results := make([]string, 0)
+
+	resp, err := svc.ListObjectsV2(&s3.ListObjectsV2Input{Bucket: aws.String(bucket)})
+	if err != nil {
+		log.Printf("Unable to list items in bucket %q, %v", bucket, err)
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	for _, item := range resp.Contents {
+
+		if checkAuthor(*item.Key, user) {
+			results = append(results, *item.Key)
+		}
+
+	}
+
+	w.WriteHeader(http.StatusOK)
+
+	json.NewEncoder(w).Encode(results)
+
+}
+
 // handle initialization of .env vars
 // create s3 session
 // useful for testing too!
@@ -325,6 +360,7 @@ func main() {
 	router.HandleFunc("/api/upload", uploadPicture).Methods("POST")
 	router.HandleFunc("/api/zipupload", bulkUpload).Methods("POST")
 	router.HandleFunc("/api/delete", deletion).Methods("DELETE")
+	router.HandleFunc("/api/search/{author}", searchByAuthor).Methods("GET")
 
 	result, err := svc.ListBuckets(nil)
 	if err != nil {

@@ -21,6 +21,8 @@ func createRouter() *mux.Router {
 	router.HandleFunc("/api/upload", uploadPicture).Methods("POST")
 	router.HandleFunc("/api/zipupload", bulkUpload).Methods("POST")
 	router.HandleFunc("/api/delete", deletion).Methods("DELETE")
+	router.HandleFunc("/api/search/{author}", searchByAuthor).Methods("GET")
+
 	return router
 }
 
@@ -71,7 +73,7 @@ func TestUploadAndDeleteBasic(t *testing.T) {
 
 	deleteTest := &DeletePictures{
 		Filenames: filesToDelete,
-		Author:    "testuser",
+		Author:    "uploadtest_user",
 	}
 
 	jsonBody, _ = json.Marshal(deleteTest)
@@ -306,5 +308,33 @@ func TestDeleteNotExist(t *testing.T) {
 
 	// assert get 200 response back, attempting to delete something that exists fails otherwise
 	assert.Equal(t, 200, response.Code, "OK response is expected")
+
+}
+
+// test search functionality
+func TestSearch(t *testing.T) {
+
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	initSession()
+
+	request, _ := http.NewRequest("GET", "/api/search/User1", nil)
+
+	response := httptest.NewRecorder()
+	createRouter().ServeHTTP(response, request)
+
+	var responseJson []string
+
+	_ = json.Unmarshal([]byte(response.Body.String()), &responseJson)
+
+	// assert get 200 response back
+	assert.Equal(t, 200, response.Code, "OK response is expected")
+
+	// assert we get back correct files
+	assert.Equal(t, "ownedbyUser1.jpg", responseJson[1], "OK response is expected")
+	assert.Equal(t, "alsoownedbyUser1.jpg", responseJson[0], "OK response is expected")
 
 }
