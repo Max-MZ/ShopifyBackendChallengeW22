@@ -7,7 +7,7 @@ Utilizing AWS S3, I have built an API in Golang, using Gorilla/Mux.  The current
 
 Each image has an associated author, which prevents other authors from deleting or overwriting images. This is stored in the metadata of each file on S3. 
 
- - [TESTING](#testing-and-examples)
+ - [TESTING SECTION](#testing-and-examples)
 
 ## Getting Started
 Requires Go 1.16 or greater.
@@ -49,7 +49,17 @@ Three easy steps:
 ## Testing and Examples
 
 The code has been tested extensively thanks to Golang's very effective testing libraries. Currently about **70%** of code is tested by the tests written in `api_test.go`. The remaining 30 mostly consists of what is left in the `main()` function, which consists mainly of setup. 
+
 ![Coverage](https://i.imgur.com/8NlUvDD.png)
+
+Running the tests is very simple: 
+
+To run all tests: `go test`
+
+To run a certain test: `go test -run {TestName}`
+
+For example, `go test -run TestSearch` will net us:
+![Coverage](https://i.imgur.com/BOLH7mD.png)
 
 ### There Are Seven Tests
 
