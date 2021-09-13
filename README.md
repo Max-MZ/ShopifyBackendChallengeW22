@@ -2,9 +2,11 @@
 
 This is my submission to the Shopify Backend Challenge for Winter 2022.
 
-Utilizing AWS S3, I have built an API in Golang.  The current functionality is uploading by single image or by bulk, zipped image, and also deletion. 
+Utilizing AWS S3, I have built an API in Golang.  The current functionality is uploading by single image or by bulk, zipped images, search by user uploaded, and also deletion. 
 
 Each image has an associated author, which prevents other authors from deleting or overwriting images. This is stored in the metadata of each file on S3. 
+
+ - [Testing](#testing-and-examples)
 
 ## Getting Started
 Requires Go 1.16 or greater.
@@ -20,6 +22,7 @@ Three easy steps:
  - Upload `POST /api/upload` 
   - Upload Bulk (zip) `POST /api/zipupload` 
  - Deletion `DELETE /api/delete` 
+ - Search `GET /api/search/{author}` 
 ## Uploading Body
     {
     "filename": <FILENAME>,
@@ -35,7 +38,7 @@ Three easy steps:
     "path": <PATH_TO_FILE>,
     "author": <AUTHOR_NAME>"
     }
-## Deletion
+## Deletion Body
 
     {
     "filenames": <ARRAY_OF_FILENAMES>,
