@@ -45,8 +45,22 @@ var bucket string         // bucketname
 var sess *session.Session // session created for s3 connection
 var svc *s3.S3            // service client
 
+// check if author of file in repo is the same as person requesting
+func checkAuthor(filename string, requester string) bool {
+	headObj := s3.HeadObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(filename),
+	}
+
+	metadata, _ := svc.HeadObject(&headObj)
+
+	return *metadata.Metadata["Author"] == requester
+
+}
+
+//check if file exists
 func checkExisting(filename string) bool {
-	//check if file exists
+
 	headObj := s3.HeadObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(filename),
@@ -54,6 +68,7 @@ func checkExisting(filename string) bool {
 
 	_, err := svc.HeadObject(&headObj)
 
+	// if metadata cannot be found for some reason, means it does not exist
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
@@ -85,25 +100,33 @@ func deletion(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Unable to decode")
 	}
 
+	// iterate through array of names to delete
 	for _, filename := range toDelete.Filenames {
-		headObj := s3.HeadObjectInput{
-			Bucket: aws.String(bucket),
-			Key:    aws.String(filename),
-		}
+		// headObj := s3.HeadObjectInput{
+		// 	Bucket: aws.String(bucket),
+		// 	Key:    aws.String(filename),
+		// }
 
-		metadata, err := svc.HeadObject(&headObj)
+		// metadata, err := svc.HeadObject(&headObj)
 
-		if err != nil {
-			log.Printf("Problem with file, probably doesn't exist")
+		// if err != nil {
+		// 	log.Printf("Problem with file, probably doesn't exist")
+		// 	continue
+
+		// }
+		// // log.Printf(*metadata.Metadata["author"])
+
+		// if the file doesn't exist, skip
+		if !checkExisting(filename) {
 			continue
-
 		}
-		// log.Printf(*metadata.Metadata["author"])
-		if *metadata.Metadata["Author"] != toDelete.Author {
+
+		// if the person trying to delete does not have permissions, skip
+		if !checkAuthor(filename, toDelete.Author) {
 			log.Printf("Not correct! ")
 			w.Write([]byte("Not the author!\n"))
 			continue
-		} else {
+		} else { // safely delete
 			_, err = svc.DeleteObject(&s3.DeleteObjectInput{Bucket: aws.String(bucket), Key: aws.String(filename)})
 			if err != nil {
 				log.Printf("Unable to delete object %q from bucket %q, %v", filename, bucket, err)
@@ -150,17 +173,19 @@ func bulkUpload(w http.ResponseWriter, r *http.Request) { // upload a zip contai
 
 	defer archive.Close()
 
-	// unzip and iterate through
+	// unzip and iterate through each file
 	for _, f := range archive.File {
 		log.Printf("unzipping file " + f.Name)
 
 		fileType := filepath.Ext(f.Name)
 
+		// accept only some filetypes
 		if fileType != ".jpg" && fileType != ".jpeg" && fileType != ".png" {
 			log.Printf("unrecognized file, skipping ")
 			continue
 		}
 
+		// fail on directory
 		if f.FileInfo().IsDir() {
 			fmt.Println("found directory")
 			w.WriteHeader(http.StatusForbidden)
@@ -179,15 +204,13 @@ func bulkUpload(w http.ResponseWriter, r *http.Request) { // upload a zip contai
 
 		meta["author"] = aws.String(uploaded.Author)
 
-		fin, err := uploader.Upload(&s3manager.UploadInput{
+		_, _ = uploader.Upload(&s3manager.UploadInput{
 			Bucket:   aws.String(bucket),
 			ACL:      aws.String("public-read"),
 			Key:      aws.String(file.Name()), // picture is prefixed by author name
 			Body:     file,
 			Metadata: meta,
 		})
-
-		log.Printf(fin.UploadID)
 
 		file.Close()
 	}
@@ -210,6 +233,10 @@ func uploadPicture(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Printf("Unable to decode")
+	}
+
+	if checkExisting(uploaded.Filename + "." + uploaded.Filetype) {
+
 	}
 	uploader := s3manager.NewUploader(sess)
 
@@ -284,26 +311,6 @@ func main() {
 	router.HandleFunc("/api/zipupload", bulkUpload).Methods("POST")
 	router.HandleFunc("/api/delete", deletion).Methods("DELETE")
 
-	// accesskey = os.Getenv("AWS_ACCESS_KEY")
-	// secretkey = os.Getenv("AWS_SECRET_ACCESS_KEY")
-	// awsRegion = os.Getenv("AWS_REGION")
-	// bucket = os.Getenv("BUCKET")
-
-	// sess, err = session.NewSession(
-	// 	&aws.Config{
-	// 		Region: aws.String(awsRegion),
-	// 		Credentials: credentials.NewStaticCredentials(
-	// 			accesskey,
-	// 			secretkey,
-	// 			"", // a token will be created when the session it's used.
-	// 		),
-	// 	})
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// svc = s3.New(sess)
-
 	result, err := svc.ListBuckets(nil)
 	if err != nil {
 		log.Printf("Unable to list buckets, %v", err)
@@ -315,19 +322,6 @@ func main() {
 		fmt.Printf("* %s created on %s\n",
 			aws.StringValue(b.Name), aws.TimeValue(b.CreationDate))
 	}
-
-	// resp, err := svc.ListObjectsV2(&s3.ListObjectsV2Input{Bucket: aws.String(bucket)})
-	// if err != nil {
-	// 	log.Printf("Unable to list items in bucket %q, %v", bucket, err)
-	// }
-
-	// for _, item := range resp.Contents {
-	// 	fmt.Println("Name:         ", *item.Key)
-	// 	fmt.Println("Last modified:", *item.LastModified)
-	// 	fmt.Println("Size:         ", *item.Size)
-	// 	fmt.Println("Storage class:", *item.StorageClass)
-	// 	fmt.Println("")
-	// }
 
 	log.Fatal(http.ListenAndServe(":8080", router))
 

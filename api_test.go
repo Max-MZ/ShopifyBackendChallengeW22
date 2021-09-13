@@ -23,7 +23,7 @@ func createRouter() *mux.Router {
 	return router
 }
 
-func TestUploadBasic(t *testing.T) {
+func TestUploadAndDeleteBasic(t *testing.T) {
 
 	err := godotenv.Load()
 	if err != nil {
@@ -55,9 +55,33 @@ func TestUploadBasic(t *testing.T) {
 	// assert get 200 response back
 	assert.Equal(t, 200, response.Code, "OK response is expected")
 
-	// assert we have created file
+	// assert we have bro created file
 	assert.Equal(t, true, checkExisting(filename.String()+"."+uploadTest.Filetype))
 
+	/*
+		DELETION ATTEMPT
+	*/
+
+	var filesToDelete []string
+	filesToDelete = append(filesToDelete, "uploadtest.jpeg")
+
+	deleteTest := &DeletePictures{
+		Filenames: filesToDelete,
+		Author:    "testuser",
+	}
+
+	jsonBody, _ = json.Marshal(deleteTest)
+
+	request, _ = http.NewRequest("DELETE", "/api/delete", bytes.NewBuffer(jsonBody))
+
+	response = httptest.NewRecorder()
+	createRouter().ServeHTTP(response, request)
+
+	// assert get 200 response back, attempting to delete something that exists fails otherwise
+	assert.Equal(t, 200, response.Code, "OK response is expected")
+
+	// assert file doesn't exist anymore
+	assert.Equal(t, false, checkExisting(filename.String()))
 }
 
 func TestUserPermission(t *testing.T) {
@@ -89,5 +113,34 @@ func TestUserPermission(t *testing.T) {
 
 	// assert we have kept the file
 	assert.Equal(t, true, checkExisting("deletePermissionsTest.jpg"))
+
+}
+
+func TestDeleteNotExist(t *testing.T) {
+
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	initSession()
+
+	var filesToDelete []string
+	filesToDelete = append(filesToDelete, "thisfiledoesnotexist.jpeg")
+
+	deleteTest := &DeletePictures{
+		Filenames: filesToDelete,
+		Author:    "testuser",
+	}
+
+	jsonBody, _ := json.Marshal(deleteTest)
+
+	request, _ := http.NewRequest("DELETE", "/api/delete", bytes.NewBuffer(jsonBody))
+
+	response := httptest.NewRecorder()
+	createRouter().ServeHTTP(response, request)
+
+	// assert get 200 response back, attempting to delete something that exists fails otherwise
+	assert.Equal(t, 200, response.Code, "OK response is expected")
 
 }
