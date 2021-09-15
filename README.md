@@ -18,6 +18,14 @@ Three easy steps:
     cd ShopifyBackendChallengeW22
     go mod download
     go run main.go
+### .env
+In order to successfully connect to an S3 bucket, the environment variables must be set up in a .env
+
+    AWS_REGION = <<AWS_REGION>> e.g us-east-1
+    AWS_ACCESS_KEY = <<AWS_ACCESS_KEY>>
+    AWS_SECRET_ACCESS_KEY = <<AWS_SECRET_KEY>>
+    BUCKET = <<BUCKET_NAME>> e.g shopifychallengew22
+
 
 # REST API Usage
  - Upload `POST /api/upload` 
